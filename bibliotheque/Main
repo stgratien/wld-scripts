@@ -1,0 +1,169 @@
+// ==============================================================================
+// MAIN - CLIENT SHOPIFY (utilise la bibliothèque WLDCore)
+// ==============================================================================
+// Ce fichier est IDENTIQUE pour tous les clients.
+// Seul Config.gs change d'un client à l'autre.
+// ==============================================================================
+
+/**
+ * Menu personnalisé - appelé automatiquement à l'ouverture
+ */
+function onOpen() {
+  WLDCore.creerMenu(CONFIG);
+}
+
+/**
+ * Envoie le reporting mensuel
+ */
+function envoyerReportingMensuel() {
+  var dateMoisPrec = WLDCore.getDateMoisPrecedent();
+  var nomMois = CONFIG.NOMS_MOIS[dateMoisPrec.getMonth()];
+  var annee = dateMoisPrec.getFullYear();
+  
+  var titreEmail = 'Reporting mensuel ' + CONFIG.NOM_MARQUE + ' - ' + nomMois + ' ' + annee;
+  var phraseIntro = 'Voici les performances de ' + nomMois + ' ' + annee;
+  
+  envoyerReporting_(titreEmail, phraseIntro, CONFIG.COMPARAISON_MENSUEL);
+}
+
+/**
+ * Envoie le reporting hebdomadaire
+ */
+function envoyerReportingHebdo() {
+  var aujourdhui = new Date();
+  var options = { day: '2-digit', month: '2-digit', year: 'numeric' };
+  var dateFormatee = aujourdhui.toLocaleDateString('fr-FR', options);
+  
+  var titreEmail = 'Reporting de performances ' + CONFIG.NOM_MARQUE + ' - ' + dateFormatee;
+  var phraseIntro = 'Voici les performances à date';
+  
+  envoyerReporting_(titreEmail, phraseIntro, CONFIG.COMPARAISON_HEBDO);
+}
+
+/**
+ * Fonction principale d'envoi du reporting
+ * @private
+ */
+function envoyerReporting_(titreEmail, phraseIntro, modeComparaison) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var lienSheet = ss.getUrl();
+  
+  // Configurer la date dans le tableau si nécessaire
+  configurerTableau_(modeComparaison);
+  
+  // Récupérer les données via la bibliothèque
+  var resultKPIs = WLDCore.recupererDonneesKPIs(CONFIG, getKPIsConfig);
+  var multiCanal = WLDCore.recupererDonneesMultiCanal(CONFIG);
+  var meta = WLDCore.recupererDonneesMeta(CONFIG);
+  var google = WLDCore.recupererDonneesGoogle(CONFIG);
+  var topProduits = WLDCore.recupererTopProduits(CONFIG);
+  
+  if (!resultKPIs.valide) {
+    WLDCore.gererErreurValidation(resultKPIs.messageErreur, lienSheet, CONFIG.EMAIL_DESTINATAIRE);
+    return;
+  }
+  
+  // Générer le HTML via la bibliothèque
+  var htmlBody = WLDCore.genererHTMLReporting({
+    kpis: resultKPIs.donnees,
+    lienSheet: lienSheet,
+    phraseIntro: phraseIntro,
+    kpisManquants: resultKPIs.kpisManquants,
+    multiCanal: multiCanal,
+    meta: meta,
+    google: google,
+    topProduits: topProduits
+  });
+  
+  // Envoyer l'email
+  GmailApp.sendEmail(CONFIG.EMAIL_DESTINATAIRE, titreEmail, '', {
+    htmlBody: htmlBody,
+    name: CONFIG.NOM_EXPEDITEUR
+  });
+  
+  Logger.log('Email envoyé : ' + titreEmail);
+}
+
+/**
+ * Configure le tableau avec la bonne période de comparaison
+ * @private
+ */
+function configurerTableau_(modeComparaison) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var feuille = ss.getSheetByName(CONFIG.SHEET_NAME);
+  if (!feuille) return;
+  
+  // Mettre à jour la cellule de comparaison (U6 par défaut)
+  var cellComparaison = feuille.getRange('U6');
+  cellComparaison.setValue(modeComparaison);
+  
+  // Attendre que les formules se recalculent
+  SpreadsheetApp.flush();
+  Utilities.sleep(2000);
+}
+
+/**
+ * Aperçu de l'email mensuel (mois précédent) sans l'envoyer
+ */
+function testApercuEmailMensuel() {
+  var dateMoisPrec = WLDCore.getDateMoisPrecedent();
+  var nomMois = CONFIG.NOMS_MOIS[dateMoisPrec.getMonth()];
+  var annee = dateMoisPrec.getFullYear();
+  var phraseIntro = 'Voici les performances de ' + nomMois + ' ' + annee;
+  var titreApercu = 'Aperçu reporting mensuel - ' + nomMois + ' ' + annee;
+  
+  afficherApercu_(phraseIntro, titreApercu, CONFIG.COMPARAISON_MENSUEL);
+}
+
+/**
+ * Aperçu de l'email hebdo (à date) sans l'envoyer
+ */
+function testApercuEmailHebdo() {
+  var aujourdhui = new Date();
+  var options = { day: '2-digit', month: '2-digit', year: 'numeric' };
+  var dateFormatee = aujourdhui.toLocaleDateString('fr-FR', options);
+  var phraseIntro = 'Voici les performances à date';
+  var titreApercu = 'Aperçu reporting hebdo - ' + dateFormatee;
+  
+  afficherApercu_(phraseIntro, titreApercu, CONFIG.COMPARAISON_HEBDO);
+}
+
+/**
+ * Fonction commune pour afficher l'aperçu
+ * @private
+ */
+function afficherApercu_(phraseIntro, titreApercu, modeComparaison) {
+  // Configurer le tableau avec le bon mode de comparaison
+  configurerTableau_(modeComparaison);
+  
+  // Récupérer les données
+  var resultKPIs = WLDCore.recupererDonneesKPIs(CONFIG, getKPIsConfig);
+  var multiCanal = WLDCore.recupererDonneesMultiCanal(CONFIG);
+  var meta = WLDCore.recupererDonneesMeta(CONFIG);
+  var google = WLDCore.recupererDonneesGoogle(CONFIG);
+  var topProduits = WLDCore.recupererTopProduits(CONFIG);
+  
+  var htmlBody = WLDCore.genererHTMLReporting({
+    kpis: resultKPIs.donnees,
+    lienSheet: SpreadsheetApp.getActiveSpreadsheet().getUrl(),
+    phraseIntro: phraseIntro,
+    kpisManquants: resultKPIs.kpisManquants,
+    multiCanal: multiCanal,
+    meta: meta,
+    google: google,
+    topProduits: topProduits
+  });
+  
+  var html = HtmlService.createHtmlOutput(htmlBody)
+    .setWidth(650)
+    .setHeight(600);
+  SpreadsheetApp.getUi().showModalDialog(html, titreApercu);
+}
+
+/**
+ * Ancien nom de fonction conservé pour rétrocompatibilité
+ * Redirige vers l'aperçu mensuel
+ */
+function testApercuEmail() {
+  testApercuEmailMensuel();
+}
